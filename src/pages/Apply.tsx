@@ -1,56 +1,58 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, CheckCircle, AlertCircle, Info, Trash2, Send, Plus, Search, ShoppingCart } from 'lucide-react';
+import { FileText, CheckCircle, AlertCircle, Info, Trash2, Send, Plus, Search, ShoppingCart, Group, Layers } from 'lucide-react';
+import { sceneTypes, sensorTypes } from '../data/mockData';
 
 export function Apply() {
-  const { selectedSamples, samples, removeSelectedSample, submitApplication, searchResults } = useStore();
+  const { selectedSamples, samples, removeSelectedSample, submitApplication, addSamplesToSelection } = useStore();
   const navigate = useNavigate();
 
   const [purpose, setPurpose] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [showAllSamples, setShowAllSamples] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'group'>('list');
 
-  const selectedSamplesData = selectedSamples.map((id) => samples.find((s) => s.id === id)).filter(Boolean);
+  const selectedSamplesData = selectedSamples.map((id) => samples.find((s) => s.id === id)).filter(Boolean) as typeof samples;
+
+  const groupedSamples = selectedSamplesData.reduce((acc, sample) => {
+    const key = `${sample.scene_type}-${sample.sensor_type}`;
+    if (!acc[key]) {
+      acc[key] = {
+        sceneType: sample.scene_type,
+        sensorType: sample.sensor_type,
+        count: 0,
+        samples: [],
+      };
+    }
+    acc[key].count++;
+    acc[key].samples.push(sample);
+    return acc;
+  }, {} as Record<string, { sceneType: string; sensorType: string; count: number; samples: typeof samples }>);
 
   const handleSubmit = () => {
     if (!purpose.trim()) return;
     if (!agreed) return;
 
     submitApplication(purpose);
-    setSubmitted(true);
+    navigate('/records');
   };
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-md w-full mx-4 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-500" />
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">申请提交成功</h2>
-          <p className="text-gray-500 mb-6">
-            您的申请已提交，我们将在1-3个工作日内审核并通过邮件通知您结果。
-          </p>
-          <div className="flex gap-4">
-            <button
-              onClick={() => navigate('/search')}
-              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              继续检索
-            </button>
-            <button
-              onClick={() => navigate('/records')}
-              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              查看记录
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const handleRemoveGroup = (groupKey: string) => {
+    const group = groupedSamples[groupKey];
+    group.samples.forEach((sample) => {
+      removeSelectedSample(sample.id);
+    });
+  };
+
+  const handleAddBySceneType = (sceneType: string) => {
+    const matchingSamples = samples.filter((s) => s.scene_type === sceneType && !selectedSamples.includes(s.id));
+    addSamplesToSelection(matchingSamples.map((s) => s.id));
+  };
+
+  const handleAddBySensorType = (sensorType: string) => {
+    const matchingSamples = samples.filter((s) => s.sensor_type === sensorType && !selectedSamples.includes(s.id));
+    addSamplesToSelection(matchingSamples.map((s) => s.id));
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -94,36 +96,84 @@ export function Apply() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5" />
-                实验数据篮
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5" />
+                  实验数据篮
+                </h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="列表视图"
+                  >
+                    <Layers className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('group')}
+                    className={`p-2 rounded-lg transition-colors ${viewMode === 'group' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                    title="分组视图"
+                  >
+                    <Group className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
               {selectedSamplesData.length > 0 ? (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {selectedSamplesData.map((sample) => (
-                    <div key={sample.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                      <img
-                        src={sample.thumbnail_url}
-                        alt={sample.name}
-                        className="w-16 h-16 rounded-lg object-cover"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900 truncate">{sample.name}</h3>
-                        <p className="text-sm text-gray-500">
-                          {sample.scene_type} - {sample.sensor_type} - {sample.terrain}
-                        </p>
+                viewMode === 'list' ? (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {selectedSamplesData.map((sample) => (
+                      <div key={sample.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                        <img
+                          src={sample.thumbnail_url}
+                          alt={sample.name}
+                          className="w-16 h-16 rounded-lg object-cover"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-gray-900 truncate">{sample.name}</h3>
+                          <p className="text-sm text-gray-500">
+                            {sample.scene_type} - {sample.sensor_type} - {sample.terrain}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => removeSelectedSample(sample.id)}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="移除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => removeSelectedSample(sample.id)}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="移除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {Object.entries(groupedSamples).map(([key, group]) => (
+                      <div key={key} className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              {group.sceneType} - {group.sensorType}
+                            </div>
+                            <div className="text-sm text-gray-500">{group.count} 个样本</div>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveGroup(key)}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {group.samples.map((sample) => (
+                            <div key={sample.id} className="px-3 py-1.5 bg-white rounded-lg text-sm text-gray-700">
+                              {sample.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : (
                 <div className="text-center py-8">
                   <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -137,6 +187,56 @@ export function Apply() {
                   </Link>
                 </div>
               )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="font-semibold text-gray-900 mb-4">按类型快速添加</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-gray-500 mb-2">按场景类型</div>
+                  <div className="flex flex-wrap gap-2">
+                    {sceneTypes.map((type) => {
+                      const count = samples.filter((s) => s.scene_type === type && !selectedSamples.includes(s.id)).length;
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => handleAddBySceneType(type)}
+                          disabled={count === 0}
+                          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                            count > 0
+                              ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {type} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-2">按传感器类型</div>
+                  <div className="flex flex-wrap gap-2">
+                    {sensorTypes.map((type) => {
+                      const count = samples.filter((s) => s.sensor_type === type && !selectedSamples.includes(s.id)).length;
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => handleAddBySensorType(type)}
+                          disabled={count === 0}
+                          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                            count > 0
+                              ? 'bg-green-50 text-green-600 hover:bg-green-100'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {type} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">

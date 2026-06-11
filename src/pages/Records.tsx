@@ -1,11 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight, Quote, Check } from 'lucide-react';
+import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight, Quote, Check, Package, Hash, CalendarDays, ExternalLink, FileDown } from 'lucide-react';
+
+type CitationFormat = 'gbt' | 'apa' | 'bibtex';
 
 export function Records() {
-  const { applications, samples, recordDownload, getDownloadsForApplication } = useStore();
+  const { applications, samples, recordDownload, getDownloadsForApplication, getDownloadPackage, highlightedAppId, setHighlightedAppId } = useStore();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
+  const [citationFormat, setCitationFormat] = useState<CitationFormat>('gbt');
+
+  useEffect(() => {
+    if (highlightedAppId) {
+      const element = document.getElementById(`app-${highlightedAppId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => {
+          setHighlightedAppId(null);
+        }, 5000);
+      }
+    }
+  }, [highlightedAppId, setHighlightedAppId]);
 
   const getSampleNames = (sampleIds: string[]) => {
     return sampleIds.map((id) => samples.find((s) => s.id === id)?.name).filter(Boolean) as string[];
@@ -46,14 +61,88 @@ export function Records() {
   };
 
   const generateCitation = (app: typeof applications[0]) => {
-    const sampleNames = getSampleNames(app.sample_ids).join('; ');
+    const sampleNames = getSampleNames(app.sample_ids);
     const date = new Date(app.submitted_at);
     const year = date.getFullYear();
-    return `低空数据集样本 [${sampleNames}]. 低空数据集平台, ${year}. Available at: https://lowaltitude.edu/dataset/${app.id}`;
+
+    switch (citationFormat) {
+      case 'apa':
+        return `Low Altitude Dataset Platform. (${year}). Low-altitude dataset samples [${sampleNames.join('; ')}]. Retrieved from https://lowaltitude.edu/dataset/${app.id}`;
+      
+      case 'bibtex':
+        const citeKey = `lowaltitude-${app.id.slice(-8)}`;
+        return `@dataset{${citeKey},
+  author = {Low Altitude Dataset Platform},
+  title = {{Low-altitude dataset samples: ${sampleNames.join('; ')}}},
+  year = {${year}},
+  url = {https://lowaltitude.edu/dataset/${app.id}},
+}`;
+      
+      default: // GB/T
+        return `低空数据集平台. 低空数据集样本 [${sampleNames.join('; ')}][EB/OL]. https://lowaltitude.edu/dataset/${app.id}, ${year}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}.`;
+    }
   };
 
   const getDownloadHistory = (applicationId: string) => {
     return getDownloadsForApplication(applicationId);
+  };
+
+  const handleExport = (app: typeof applications[0]) => {
+    const sampleNames = getSampleNames(app.sample_ids);
+    const downloadPackage = getDownloadPackage(app.id);
+    
+    const content = `低空数据集申请导出
+====================
+
+申请信息
+--------
+申请ID: ${app.id}
+申请时间: ${formatDate(app.submitted_at)}
+审核状态: ${getStatusInfo(app.status).label}
+使用说明: ${app.purpose}
+
+样本清单
+--------
+${sampleNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}
+
+下载包信息
+----------
+文件数量: ${downloadPackage.files.length}
+有效期至: ${downloadPackage.expiresAt ? formatDate(downloadPackage.expiresAt) : '未生成'}
+
+文件详情
+--------
+${downloadPackage.files.map((file, i) => 
+  `${i + 1}. ${file.name}
+   大小: ${file.size}
+   校验码(MD5): ${file.checksum}`
+).join('\n\n')}
+
+引用格式 (GB/T)
+---------------
+${generateCitation(app)}
+`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `application_${app.id}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const getFileTotalSize = (files: { size: string }[]) => {
+    let total = 0;
+    files.forEach(file => {
+      const match = file.size.match(/([\d.]+)/);
+      if (match) {
+        total += parseFloat(match[1]);
+      }
+    });
+    return `${total.toFixed(1)} MB`;
   };
 
   return (
@@ -78,10 +167,29 @@ export function Records() {
               const StatusIcon = statusInfo.icon;
               const sampleNames = getSampleNames(application.sample_ids);
               const downloads = getDownloadHistory(application.id);
+              const downloadPackage = getDownloadPackage(application.id);
               const isExpanded = expandedApp === application.id;
+              const isHighlighted = highlightedAppId === application.id;
 
               return (
-                <div key={application.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div
+                  key={application.id}
+                  id={`app-${application.id}`}
+                  className={`bg-white rounded-xl shadow-sm border transition-all duration-500 ${
+                    isHighlighted 
+                      ? 'border-blue-500 shadow-lg ring-2 ring-blue-200' 
+                      : 'border-gray-100 hover:shadow-md'
+                  }`}
+                >
+                  {isHighlighted && (
+                    <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
+                      <div className="flex items-center gap-2 text-blue-600 text-sm font-medium">
+                        <CheckCircle className="w-4 h-4" />
+                        新提交的申请
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -94,6 +202,13 @@ export function Records() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleExport(application)}
+                          className="flex items-center gap-1 text-sm text-green-600 hover:text-green-700"
+                        >
+                          <FileDown className="w-4 h-4" />
+                          导出
+                        </button>
                         <button
                           onClick={() => setExpandedApp(isExpanded ? null : application.id)}
                           className="text-sm text-blue-600 hover:text-blue-700"
@@ -128,10 +243,54 @@ export function Records() {
                     </div>
 
                     {application.status === 'approved' && (
-                      <div className="mb-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm text-gray-500">
-                            <Download className="w-4 h-4 inline mr-1" />
+                      <div className="space-y-4">
+                        <div className="bg-blue-50 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Package className="w-5 h-5 text-blue-600" />
+                            <h3 className="font-semibold text-blue-800">下载包清单</h3>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div className="bg-white rounded p-3">
+                              <div className="text-gray-500">文件数量</div>
+                              <div className="font-medium text-gray-900">{downloadPackage.files.length} 个</div>
+                            </div>
+                            <div className="bg-white rounded p-3">
+                              <div className="text-gray-500">总大小</div>
+                              <div className="font-medium text-gray-900">{getFileTotalSize(downloadPackage.files)}</div>
+                            </div>
+                            <div className="bg-white rounded p-3">
+                              <div className="text-gray-500">有效期至</div>
+                              <div className="font-medium text-gray-900">{downloadPackage.expiresAt ? formatDate(downloadPackage.expiresAt) : '--'}</div>
+                            </div>
+                            <div className="bg-white rounded p-3">
+                              <div className="text-gray-500">已下载</div>
+                              <div className="font-medium text-gray-900">{downloads.length} 次</div>
+                            </div>
+                          </div>
+                          
+                          {downloadPackage.files.length > 0 && (
+                            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+                              {downloadPackage.files.map((file, i) => (
+                                <div key={i} className="flex items-center justify-between bg-white rounded px-3 py-2 text-sm">
+                                  <div>
+                                    <div className="font-medium text-gray-900">{file.name}</div>
+                                    <div className="text-gray-500 flex items-center gap-4">
+                                      <span>{file.size}</span>
+                                      <span className="flex items-center gap-1">
+                                        <Hash className="w-3 h-3" />
+                                        {file.checksum}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 flex items-center gap-1">
+                            <Download className="w-4 h-4" />
                             下载次数: {downloads.length}
                           </span>
                           <button
@@ -145,7 +304,10 @@ export function Records() {
 
                         {downloads.length > 0 && (
                           <div className="bg-gray-50 rounded-lg p-3">
-                            <div className="text-xs text-gray-500 mb-2">下载记录:</div>
+                            <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                              <CalendarDays className="w-3 h-3" />
+                              下载记录:
+                            </div>
                             <div className="space-y-1 max-h-24 overflow-y-auto">
                               {downloads.map((d, i) => (
                                 <div key={d.id} className="text-xs text-gray-600 flex items-center gap-2">
@@ -157,17 +319,37 @@ export function Records() {
                           </div>
                         )}
 
-                        <div className="mt-4 bg-blue-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 text-blue-800 font-medium">
+                        <div className="bg-purple-50 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2 text-purple-800 font-medium">
                               <Quote className="w-4 h-4" />
                               引用信息
                             </div>
+                            <div className="flex items-center gap-1">
+                              {(['gbt', 'apa', 'bibtex'] as CitationFormat[]).map((format) => (
+                                <button
+                                  key={format}
+                                  onClick={() => setCitationFormat(format)}
+                                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                                    citationFormat === format
+                                      ? 'bg-purple-500 text-white'
+                                      : 'bg-white text-purple-600 hover:bg-purple-100'
+                                  }`}
+                                >
+                                  {format === 'gbt' ? 'GB/T' : format.toUpperCase()}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="relative">
+                            <pre className="text-xs text-purple-700 bg-white/50 rounded p-3 font-mono whitespace-pre-wrap break-all">
+                              {generateCitation(application)}
+                            </pre>
                             <button
                               onClick={() => handleCopy(generateCitation(application))}
-                              className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                              className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-purple-500 text-white text-xs rounded-lg hover:bg-purple-600 transition-colors"
                             >
-                              {copiedId === application.id ? (
+                              {copiedId === generateCitation(application) ? (
                                 <>
                                   <Check className="w-3 h-3" />
                                   已复制
@@ -175,13 +357,10 @@ export function Records() {
                               ) : (
                                 <>
                                   <Copy className="w-3 h-3" />
-                                  复制引用
+                                  复制
                                 </>
                               )}
                             </button>
-                          </div>
-                          <div className="text-xs text-blue-700 bg-white/50 rounded p-2 font-mono leading-relaxed">
-                            {generateCitation(application)}
                           </div>
                         </div>
                       </div>

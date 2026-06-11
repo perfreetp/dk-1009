@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store';
 import { sensorTypes, terrains, weathers, targetClasses } from '../../data/mockData';
-import { ChevronDown, ChevronUp, RotateCcw, Search, Bookmark, Save, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, Search, Bookmark, Save, Trash2, X, Edit3, Star, Check, CheckSquare, Square } from 'lucide-react';
 
 interface FilterSectionProps {
   title: string;
@@ -26,10 +26,34 @@ function FilterSection({ title, children, defaultOpen = true }: FilterSectionPro
 }
 
 export function FilterPanel() {
-  const { filter, keyword, setFilter, setKeyword, resetFilter, searchSamples, savedFilters, saveFilterAs, loadFilter, deleteSavedFilter } = useStore();
+  const { 
+    filter, 
+    keyword, 
+    setFilter, 
+    setKeyword, 
+    resetFilter, 
+    searchSamples, 
+    savedFilters, 
+    saveFilterAs, 
+    loadFilter, 
+    deleteSavedFilter,
+    renameFilter,
+    setDefaultFilter,
+    getDefaultFilter,
+    searchResults,
+    selectAllVisibleSamples,
+    selectedSamples,
+    addSamplesToSelection,
+    removeSamplesFromSelection,
+  } = useStore();
+  
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSavedList, setShowSavedList] = useState(false);
   const [filterName, setFilterName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const defaultFilter = getDefaultFilter();
 
   const handleHeightChange = (type: 'min' | 'max', value: number) => {
     setFilter({
@@ -61,8 +85,20 @@ export function FilterPanel() {
   };
 
   const handleLoadFilter = (savedFilter: typeof savedFilters[0]) => {
-    loadFilter(savedFilter);
+    loadFilter(savedFilter, true);
     setShowSavedList(false);
+  };
+
+  const handleRename = () => {
+    if (editingId && editName.trim()) {
+      renameFilter(editingId, editName.trim());
+      setEditingId(null);
+      setEditName('');
+    }
+  };
+
+  const handleSetDefault = (id: string) => {
+    setDefaultFilter(id);
   };
 
   const getActiveFilterCount = () => {
@@ -87,6 +123,18 @@ export function FilterPanel() {
       parts.push(`高度: ${filter.flightHeight.min}-${filter.flightHeight.max}m`);
     }
     return parts;
+  };
+
+  const allVisibleSelected = searchResults.samples.length > 0 && 
+    searchResults.samples.every((s) => selectedSamples.includes(s.id));
+
+  const handleSelectAll = () => {
+    if (allVisibleSelected) {
+      const visibleIds = searchResults.samples.map((s) => s.id);
+      removeSamplesFromSelection(visibleIds);
+    } else {
+      selectAllVisibleSamples();
+    }
   };
 
   return (
@@ -131,21 +179,77 @@ export function FilterPanel() {
             </button>
           </div>
           {savedFilters.length > 0 ? (
-            <div className="space-y-2 max-h-40 overflow-y-auto">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
               {savedFilters.map((sf) => (
                 <div key={sf.id} className="flex items-center justify-between p-2 bg-white rounded-lg">
-                  <button
-                    onClick={() => handleLoadFilter(sf)}
-                    className="text-sm text-gray-700 hover:text-blue-600 text-left flex-1 truncate"
-                  >
-                    {sf.name}
-                  </button>
-                  <button
-                    onClick={() => deleteSavedFilter(sf.id)}
-                    className="p-1 text-gray-400 hover:text-red-500"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  <div className="flex-1">
+                    {editingId === sf.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-200 rounded"
+                          autoFocus
+                          onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                        />
+                        <button
+                          onClick={handleRename}
+                          className="p-1 text-green-600 hover:text-green-700"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="p-1 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleLoadFilter(sf)}
+                        className="text-sm text-gray-700 hover:text-blue-600 text-left flex-1 truncate flex items-center gap-2"
+                      >
+                        {sf.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                        {sf.name}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {editingId !== sf.id && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingId(sf.id);
+                            setEditName(sf.name);
+                          }}
+                          className="p-1 text-gray-400 hover:text-blue-600"
+                          title="重命名"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleSetDefault(sf.id)}
+                          className={`p-1 transition-colors ${
+                            sf.isDefault 
+                              ? 'text-yellow-500' 
+                              : 'text-gray-400 hover:text-yellow-500'
+                          }`}
+                          title="设为默认"
+                        >
+                          <Star className={`w-3 h-3 ${sf.isDefault ? 'fill-yellow-500' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => deleteSavedFilter(sf.id)}
+                          className="p-1 text-gray-400 hover:text-red-500"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -170,6 +274,7 @@ export function FilterPanel() {
               onChange={(e) => setFilterName(e.target.value)}
               placeholder="输入方案名称..."
               className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveFilter()}
             />
             <button
               onClick={handleSaveFilter}
@@ -180,6 +285,20 @@ export function FilterPanel() {
           </div>
         </div>
       )}
+
+      <div className="mb-4 p-3 bg-green-50 rounded-lg">
+        <button
+          onClick={handleSelectAll}
+          className="flex items-center gap-2 text-sm text-green-700 hover:text-green-800"
+        >
+          {allVisibleSelected ? (
+            <CheckSquare className="w-4 h-4" />
+          ) : (
+            <Square className="w-4 h-4" />
+          )}
+          全选当前结果 ({searchResults.samples.length}个)
+        </button>
+      </div>
 
       <FilterSection title="关键词搜索">
         <input

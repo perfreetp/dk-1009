@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Sample, Favorite, Application, FilterState, SearchResult, Download } from '../types';
-import { mockSamples, mockFavorites, mockApplications } from '../data/mockData';
+import { mockSamples, mockFavorites, mockApplications, mockDownloads } from '../data/mockData';
 
 const STORAGE_KEYS = {
   favorites: 'lowalt_favorites',
@@ -8,6 +8,8 @@ const STORAGE_KEYS = {
   applications: 'lowalt_applications',
   downloads: 'lowalt_downloads',
   savedFilters: 'lowalt_saved_filters',
+  defaultFilterId: 'lowalt_default_filter_id',
+  highlightedAppId: 'lowalt_highlighted_app_id',
 };
 
 interface SavedFilter {
@@ -16,6 +18,17 @@ interface SavedFilter {
   filter: FilterState;
   keyword: string;
   createdAt: string;
+  isDefault: boolean;
+}
+
+interface DownloadPackage {
+  applicationId: string;
+  files: {
+    name: string;
+    size: string;
+    checksum: string;
+  }[];
+  expiresAt: string;
 }
 
 function loadFromStorage<T>(key: string, defaultValue: T): T {
@@ -40,11 +53,13 @@ interface AppState {
   favorites: Favorite[];
   applications: Application[];
   downloads: Download[];
+  downloadPackages: Record<string, DownloadPackage>;
   filter: FilterState;
   keyword: string;
   searchResults: SearchResult;
   selectedSamples: string[];
   savedFilters: SavedFilter[];
+  highlightedAppId: string | null;
 
   setFilter: (filter: Partial<FilterState>) => void;
   setKeyword: (keyword: string) => void;
@@ -57,21 +72,51 @@ interface AppState {
   addSelectedSample: (sampleId: string) => void;
   removeSelectedSample: (sampleId: string) => void;
   clearSelectedSamples: () => void;
-  submitApplication: (purpose: string) => void;
+  submitApplication: (purpose: string) => string;
+  setHighlightedAppId: (id: string | null) => void;
   recordDownload: (applicationId: string) => void;
   getDownloadsForApplication: (applicationId: string) => Download[];
+  getDownloadPackage: (applicationId: string) => DownloadPackage;
   saveFilterAs: (name: string) => void;
-  loadFilter: (savedFilter: SavedFilter) => void;
+  loadFilter: (savedFilter: SavedFilter, autoSearch?: boolean) => void;
   deleteSavedFilter: (id: string) => void;
+  renameFilter: (id: string, newName: string) => void;
+  setDefaultFilter: (id: string) => void;
+  getDefaultFilter: () => SavedFilter | null;
   addSamplesToSelection: (sampleIds: string[]) => void;
   removeSamplesFromSelection: (sampleIds: string[]) => void;
+  selectAllVisibleSamples: () => void;
 }
+
+const generateChecksum = () => {
+  return Array.from({ length: 32 }, () => 
+    '0123456789abcdef'[Math.floor(Math.random() * 16)]
+  ).join('');
+};
+
+const generateDownloadPackage = (applicationId: string, sampleIds: string[]): DownloadPackage => {
+  const files = sampleIds.map((id, index) => ({
+    name: `sample_${id}.zip`,
+    size: `${(100 + Math.random() * 500).toFixed(1)} MB`,
+    checksum: generateChecksum(),
+  }));
+  
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  
+  return {
+    applicationId,
+    files,
+    expiresAt: expiresAt.toISOString(),
+  };
+};
 
 export const useStore = create<AppState>((set, get) => ({
   samples: mockSamples,
   favorites: loadFromStorage(STORAGE_KEYS.favorites, mockFavorites),
   applications: loadFromStorage(STORAGE_KEYS.applications, mockApplications),
-  downloads: loadFromStorage(STORAGE_KEYS.downloads, []),
+  downloads: loadFromStorage(STORAGE_KEYS.downloads, mockDownloads),
+  downloadPackages: {},
   filter: {
     flightHeight: { min: 0, max: 200 },
     sensorTypes: [],
@@ -88,6 +133,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   selectedSamples: loadFromStorage(STORAGE_KEYS.selectedSamples, []),
   savedFilters: loadFromStorage(STORAGE_KEYS.savedFilters, []),
+  highlightedAppId: loadFromStorage(STORAGE_KEYS.highlightedAppId, null),
 
   setFilter: (newFilter) => {
     set((state) => ({
@@ -226,9 +272,17 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
+  selectAllVisibleSamples: () => {
+    const { searchResults, selectedSamples } = get();
+    const visibleIds = searchResults.samples.map((s) => s.id);
+    const newSelected = [...new Set([...selectedSamples, ...visibleIds])];
+    saveToStorage(STORAGE_KEYS.selectedSamples, newSelected);
+    set({ selectedSamples: newSelected });
+  },
+
   submitApplication: (purpose) => {
     const { selectedSamples } = get();
-    if (selectedSamples.length === 0) return;
+    if (selectedSamples.length === 0) return '';
 
     const newApplication: Application = {
       id: `app${Date.now()}`,
@@ -242,8 +296,21 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => {
       const newApplications = [newApplication, ...state.applications];
       saveToStorage(STORAGE_KEYS.applications, newApplications);
-      return { applications: newApplications };
+      saveToStorage(STORAGE_KEYS.selectedSamples, []);
+      saveToStorage(STORAGE_KEYS.highlightedAppId, newApplication.id);
+      return { 
+        applications: newApplications, 
+        selectedSamples: [],
+        highlightedAppId: newApplication.id 
+      };
     });
+
+    return newApplication.id;
+  },
+
+  setHighlightedAppId: (id) => {
+    saveToStorage(STORAGE_KEYS.highlightedAppId, id);
+    set({ highlightedAppId: id });
   },
 
   recordDownload: (applicationId) => {
@@ -263,6 +330,26 @@ export const useStore = create<AppState>((set, get) => ({
     return get().downloads.filter((d) => d.application_id === applicationId);
   },
 
+  getDownloadPackage: (applicationId) => {
+    const state = get();
+    if (state.downloadPackages[applicationId]) {
+      return state.downloadPackages[applicationId];
+    }
+    
+    const app = state.applications.find((a) => a.id === applicationId);
+    if (!app) {
+      return { applicationId, files: [], expiresAt: '' };
+    }
+    
+    const packageData = generateDownloadPackage(applicationId, app.sample_ids);
+    
+    set((s) => ({
+      downloadPackages: { ...s.downloadPackages, [applicationId]: packageData },
+    }));
+    
+    return packageData;
+  },
+
   saveFilterAs: (name) => {
     const { filter, keyword } = get();
     const savedFilter: SavedFilter = {
@@ -271,6 +358,7 @@ export const useStore = create<AppState>((set, get) => ({
       filter: { ...filter },
       keyword,
       createdAt: new Date().toISOString(),
+      isDefault: false,
     };
     set((state) => {
       const newSaved = [savedFilter, ...state.savedFilters];
@@ -279,11 +367,16 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  loadFilter: (savedFilter) => {
+  loadFilter: (savedFilter, autoSearch = false) => {
     set({
       filter: savedFilter.filter,
       keyword: savedFilter.keyword,
     });
+    if (autoSearch) {
+      setTimeout(() => {
+        get().searchSamples();
+      }, 0);
+    }
   },
 
   deleteSavedFilter: (id) => {
@@ -292,5 +385,29 @@ export const useStore = create<AppState>((set, get) => ({
       saveToStorage(STORAGE_KEYS.savedFilters, newSaved);
       return { savedFilters: newSaved };
     });
+  },
+
+  renameFilter: (id, newName) => {
+    set((state) => {
+      const newSaved = state.savedFilters.map((f) =>
+        f.id === id ? { ...f, name: newName } : f
+      );
+      saveToStorage(STORAGE_KEYS.savedFilters, newSaved);
+      return { savedFilters: newSaved };
+    });
+  },
+
+  setDefaultFilter: (id) => {
+    set((state) => {
+      const newSaved = state.savedFilters.map((f) =>
+        ({ ...f, isDefault: f.id === id })
+      );
+      saveToStorage(STORAGE_KEYS.savedFilters, newSaved);
+      return { savedFilters: newSaved };
+    });
+  },
+
+  getDefaultFilter: () => {
+    return get().savedFilters.find((f) => f.isDefault) || null;
   },
 }));
