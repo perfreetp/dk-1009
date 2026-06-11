@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useStore } from '../../store';
 import { Sample } from '../../types';
-import { Camera, MapPin, Cloud, Bookmark, Plus } from 'lucide-react';
+import { Camera, MapPin, Cloud, Bookmark, Plus, Check, ShoppingCart } from 'lucide-react';
 
 interface ResultCardProps {
   sample: Sample;
@@ -14,6 +14,7 @@ export function ResultCard({ sample, showCheckbox = false }: ResultCardProps) {
   const selected = selectedSamples.includes(sample.id);
 
   const handleFavorite = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (favorite) {
       removeFavorite(sample.id);
@@ -23,6 +24,7 @@ export function ResultCard({ sample, showCheckbox = false }: ResultCardProps) {
   };
 
   const handleSelect = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (selected) {
       removeSelectedSample(sample.id);
@@ -31,8 +33,15 @@ export function ResultCard({ sample, showCheckbox = false }: ResultCardProps) {
     }
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300">
+    <div 
+      className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300"
+      onClick={handleCardClick}
+    >
       <div className="relative">
         <img
           src={sample.thumbnail_url}
@@ -40,25 +49,33 @@ export function ResultCard({ sample, showCheckbox = false }: ResultCardProps) {
           className="w-full h-40 object-cover"
         />
         <div className="absolute top-3 right-3 flex flex-col gap-2">
-          {showCheckbox && (
-            <button
-              onClick={handleSelect}
-              className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
-                selected ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'
-              }`}
-            >
-              {selected && <Plus className="w-4 h-4 text-white rotate-45" />}
-            </button>
-          )}
+          <button
+            onClick={handleSelect}
+            className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all ${
+              selected 
+                ? 'bg-green-500 border-green-500 text-white' 
+                : 'bg-white/90 border-gray-300 text-gray-600 hover:bg-green-50 hover:border-green-400'
+            }`}
+            title={selected ? '已加入实验数据篮' : '加入实验数据篮'}
+          >
+            {selected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          </button>
           <button
             onClick={handleFavorite}
             className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-              favorite ? 'bg-red-500 text-white' : 'bg-white/80 text-gray-600 hover:bg-white'
+              favorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-600 hover:bg-red-50'
             }`}
+            title={favorite ? '取消收藏' : '收藏'}
           >
             <Bookmark className={`w-4 h-4 ${favorite ? 'fill-current' : ''}`} />
           </button>
         </div>
+        {selected && (
+          <div className="absolute bottom-3 left-3 px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-lg flex items-center gap-1">
+            <ShoppingCart className="w-3 h-3" />
+            已选
+          </div>
+        )}
       </div>
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
@@ -85,12 +102,34 @@ export function ResultCard({ sample, showCheckbox = false }: ResultCardProps) {
           <span>高度: {sample.flight_height}m</span>
           <span>目标: {sample.target_classes.split(',').length}类</span>
         </div>
-        <Link
-          to={`/sample/${sample.id}`}
-          className="mt-4 block w-full text-center py-2 bg-blue-50 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors"
-        >
-          查看详情
-        </Link>
+        <div className="flex gap-2 mt-3">
+          <Link
+            to={`/sample/${sample.id}`}
+            className="flex-1 block text-center py-2 bg-blue-50 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            查看详情
+          </Link>
+          <button
+            onClick={handleSelect}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+              selected
+                ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {selected ? (
+              <>
+                <Check className="w-4 h-4" />
+                已选
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                加入
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

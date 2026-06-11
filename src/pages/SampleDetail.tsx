@@ -4,18 +4,19 @@ import { ThumbnailGallery } from '../components/Sample/ThumbnailGallery';
 import { TrajectoryMap } from '../components/Sample/TrajectoryMap';
 import { AnnotationLayer } from '../components/Sample/AnnotationLayer';
 import { mockAnnotations, mockTrajectories } from '../data/mockData';
-import { ArrowLeft, Bookmark, Download, Calendar, Camera, MapPin, Cloud, Ruler, Tag } from 'lucide-react';
+import { ArrowLeft, Bookmark, Download, Calendar, Camera, MapPin, Cloud, Ruler, Tag, Plus, Check, ShoppingCart } from 'lucide-react';
 
 export function SampleDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { samples, isFavorite, addFavorite, removeFavorite } = useStore();
+  const { samples, isFavorite, addFavorite, removeFavorite, selectedSamples, addSelectedSample, removeSelectedSample } = useStore();
 
   const sample = samples.find((s) => s.id === id);
   const annotations = mockAnnotations.filter((a) => a.sample_id === id);
   const trajectory = mockTrajectories.find((t) => t.sample_id === id);
 
   const favorite = isFavorite(id || '');
+  const isInBasket = selectedSamples.includes(id || '');
 
   const handleFavorite = () => {
     if (favorite) {
@@ -23,6 +24,21 @@ export function SampleDetail() {
     } else {
       addFavorite(id || '');
     }
+  };
+
+  const handleAddToBasket = () => {
+    if (isInBasket) {
+      removeSelectedSample(id || '');
+    } else {
+      addSelectedSample(id || '');
+    }
+  };
+
+  const handleApply = () => {
+    if (!isInBasket) {
+      addSelectedSample(id || '');
+    }
+    navigate('/apply');
   };
 
   if (!sample) {
@@ -64,15 +80,26 @@ export function SampleDetail() {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/search')}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              返回
-            </button>
-            <h1 className="text-xl font-semibold text-gray-900">{sample.name}</h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/search')}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                返回
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900">{sample.name}</h1>
+            </div>
+            {selectedSamples.length > 0 && (
+              <button
+                onClick={() => navigate('/apply')}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                实验数据篮 ({selectedSamples.length})
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -173,10 +200,35 @@ export function SampleDetail() {
                 <p className="text-gray-700 text-sm leading-relaxed">{sample.description}</p>
               </div>
 
-              <button className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 transition-colors">
-                <Download className="w-4 h-4" />
-                申请下载
-              </button>
+              <div className="mt-6 space-y-3">
+                <button
+                  onClick={handleAddToBasket}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 font-medium rounded-lg transition-colors ${
+                    isInBasket
+                      ? 'bg-green-100 text-green-600 hover:bg-green-200 border-2 border-green-500'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                  }`}
+                >
+                  {isInBasket ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      已加入实验数据篮
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-5 h-5" />
+                      加入实验数据篮
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleApply}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  申请下载
+                </button>
+              </div>
             </div>
           </div>
         </div>

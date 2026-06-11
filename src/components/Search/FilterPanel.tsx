@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store';
 import { sensorTypes, terrains, weathers, targetClasses } from '../../data/mockData';
-import { ChevronDown, ChevronUp, RotateCcw, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, Search, Bookmark, Save, Trash2, X } from 'lucide-react';
 
 interface FilterSectionProps {
   title: string;
@@ -26,7 +26,10 @@ function FilterSection({ title, children, defaultOpen = true }: FilterSectionPro
 }
 
 export function FilterPanel() {
-  const { filter, setFilter, resetFilter, searchSamples } = useStore();
+  const { filter, keyword, setFilter, setKeyword, resetFilter, searchSamples, savedFilters, saveFilterAs, loadFilter, deleteSavedFilter } = useStore();
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSavedList, setShowSavedList] = useState(false);
+  const [filterName, setFilterName] = useState('');
 
   const handleHeightChange = (type: 'min' | 'max', value: number) => {
     setFilter({
@@ -49,18 +52,144 @@ export function FilterPanel() {
     return filter[category].includes(value);
   };
 
+  const handleSaveFilter = () => {
+    if (filterName.trim()) {
+      saveFilterAs(filterName.trim());
+      setFilterName('');
+      setShowSaveModal(false);
+    }
+  };
+
+  const handleLoadFilter = (savedFilter: typeof savedFilters[0]) => {
+    loadFilter(savedFilter);
+    setShowSavedList(false);
+  };
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filter.sensorTypes.length > 0) count++;
+    if (filter.terrains.length > 0) count++;
+    if (filter.weathers.length > 0) count++;
+    if (filter.targetClasses.length > 0) count++;
+    if (filter.flightHeight.min > 0 || filter.flightHeight.max < 200) count++;
+    if (keyword.trim()) count++;
+    return count;
+  };
+
+  const getFilterSummary = () => {
+    const parts: string[] = [];
+    if (keyword.trim()) parts.push(`关键词: ${keyword}`);
+    if (filter.sensorTypes.length > 0) parts.push(`传感器: ${filter.sensorTypes.join(', ')}`);
+    if (filter.terrains.length > 0) parts.push(`地貌: ${filter.terrains.join(', ')}`);
+    if (filter.weathers.length > 0) parts.push(`天气: ${filter.weathers.join(', ')}`);
+    if (filter.targetClasses.length > 0) parts.push(`目标: ${filter.targetClasses.join(', ')}`);
+    if (filter.flightHeight.min > 0 || filter.flightHeight.max < 200) {
+      parts.push(`高度: ${filter.flightHeight.min}-${filter.flightHeight.max}m`);
+    }
+    return parts;
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">筛选条件</h3>
-        <button
-          onClick={resetFilter}
-          className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
-        >
-          <RotateCcw className="w-4 h-4" />
-          重置
-        </button>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-gray-900">筛选条件</h3>
+          {getActiveFilterCount() > 0 && (
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs rounded-full">
+              {getActiveFilterCount()}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSavedList(!showSavedList)}
+            className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1"
+          >
+            <Bookmark className="w-4 h-4" />
+            {savedFilters.length}
+          </button>
+          <button
+            onClick={resetFilter}
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            <RotateCcw className="w-4 h-4" />
+            重置
+          </button>
+        </div>
       </div>
+
+      {showSavedList && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">已保存的方案</span>
+            <button
+              onClick={() => setShowSaveModal(true)}
+              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              <Save className="w-3 h-3" />
+              保存当前
+            </button>
+          </div>
+          {savedFilters.length > 0 ? (
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {savedFilters.map((sf) => (
+                <div key={sf.id} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                  <button
+                    onClick={() => handleLoadFilter(sf)}
+                    className="text-sm text-gray-700 hover:text-blue-600 text-left flex-1 truncate"
+                  >
+                    {sf.name}
+                  </button>
+                  <button
+                    onClick={() => deleteSavedFilter(sf.id)}
+                    className="p-1 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">暂无保存的方案</p>
+          )}
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-800">保存当前筛选</span>
+            <button onClick={() => setShowSaveModal(false)} className="text-gray-500">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={filterName}
+              onChange={(e) => setFilterName(e.target.value)}
+              placeholder="输入方案名称..."
+              className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleSaveFilter}
+              className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      )}
+
+      <FilterSection title="关键词搜索">
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="搜索名称、描述、目标类别..."
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </FilterSection>
 
       <FilterSection title="飞行高度 (米)">
         <div className="space-y-3">
@@ -164,6 +293,17 @@ export function FilterPanel() {
           ))}
         </div>
       </FilterSection>
+
+      {getFilterSummary().length > 0 && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="text-xs text-gray-500 mb-1">当前条件摘要:</div>
+          <div className="text-xs text-gray-700 space-y-1">
+            {getFilterSummary().map((part, i) => (
+              <div key={i}>{part}</div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button
         onClick={searchSamples}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, Bookmark, FileText, ClipboardList, Menu, X, User } from 'lucide-react';
+import { Home, Search, Bookmark, FileText, ClipboardList, Menu, X, User, ShoppingCart } from 'lucide-react';
+import { useStore } from '../../store';
 
 const navItems = [
   { name: '首页', path: '/', icon: Home },
@@ -13,6 +14,7 @@ const navItems = [
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { selectedSamples } = useStore();
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
@@ -48,7 +50,16 @@ export function Header() {
             })}
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {selectedSamples.length > 0 && (
+              <Link
+                to="/apply"
+                className="flex items-center gap-2 px-3 py-1.5 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span className="text-sm font-medium">实验数据篮 ({selectedSamples.length})</span>
+              </Link>
+            )}
             <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-full">
               <User className="w-4 h-4 text-gray-500" />
               <span className="text-sm text-gray-600">研究员</span>

@@ -1,18 +1,14 @@
-import { useStore } from '../store';
-import { mockDownloads } from '../data/mockData';
-import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { useStore } from '../store';
+import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight, Quote, Check } from 'lucide-react';
 
 export function Records() {
-  const { applications, samples } = useStore();
+  const { applications, samples, recordDownload, getDownloadsForApplication } = useStore();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedApp, setExpandedApp] = useState<string | null>(null);
 
   const getSampleNames = (sampleIds: string[]) => {
-    return sampleIds.map((id) => samples.find((s) => s.id === id)?.name).filter(Boolean);
-  };
-
-  const getDownloadCount = (appId: string) => {
-    return mockDownloads.filter((d) => d.application_id === appId).length;
+    return sampleIds.map((id) => samples.find((s) => s.id === id)?.name).filter(Boolean) as string[];
   };
 
   const formatDate = (dateStr: string) => {
@@ -45,6 +41,21 @@ export function Records() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleDownload = (applicationId: string) => {
+    recordDownload(applicationId);
+  };
+
+  const generateCitation = (app: typeof applications[0]) => {
+    const sampleNames = getSampleNames(app.sample_ids).join('; ');
+    const date = new Date(app.submitted_at);
+    const year = date.getFullYear();
+    return `低空数据集样本 [${sampleNames}]. 低空数据集平台, ${year}. Available at: https://lowaltitude.edu/dataset/${app.id}`;
+  };
+
+  const getDownloadHistory = (applicationId: string) => {
+    return getDownloadsForApplication(applicationId);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100">
@@ -52,6 +63,9 @@ export function Records() {
           <div className="flex items-center gap-3">
             <ClipboardList className="w-6 h-6 text-blue-500" />
             <h1 className="text-xl font-semibold text-gray-900">申请记录</h1>
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-sm rounded-full">
+              {applications.length}
+            </span>
           </div>
         </div>
       </div>
@@ -63,7 +77,8 @@ export function Records() {
               const statusInfo = getStatusInfo(application.status);
               const StatusIcon = statusInfo.icon;
               const sampleNames = getSampleNames(application.sample_ids);
-              const downloadCount = getDownloadCount(application.id);
+              const downloads = getDownloadHistory(application.id);
+              const isExpanded = expandedApp === application.id;
 
               return (
                 <div key={application.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -78,26 +93,32 @@ export function Records() {
                           {formatDate(application.submitted_at)}
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleCopy(application.id)}
-                        className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        <Copy className="w-4 h-4" />
-                        {copiedId === application.id ? '已复制' : '复制ID'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setExpandedApp(isExpanded ? null : application.id)}
+                          className="text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          {isExpanded ? '收起详情' : '查看详情'}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mb-4">
-                      <h3 className="font-semibold text-gray-900 mb-2">申请数据</h3>
+                      <h3 className="font-semibold text-gray-900 mb-2">申请数据 ({application.sample_ids.length}个)</h3>
                       <div className="flex flex-wrap gap-2">
-                        {sampleNames.map((name, index) => (
+                        {sampleNames.slice(0, 3).map((name, index) => (
                           <span
                             key={index}
-                            className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-lg"
+                            className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-lg truncate max-w-[200px]"
                           >
                             {name}
                           </span>
                         ))}
+                        {sampleNames.length > 3 && (
+                          <span className="px-3 py-1 bg-blue-50 text-blue-600 text-sm rounded-lg">
+                            +{sampleNames.length - 3} 更多
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -106,22 +127,63 @@ export function Records() {
                       <p className="text-sm text-gray-600 leading-relaxed">{application.purpose}</p>
                     </div>
 
-                    {application.status === 'approved' && application.reviewed_at && (
-                      <div className="mb-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <span className="text-sm text-gray-500">
-                            <Calendar className="w-4 h-4 inline mr-1" />
-                            审核时间: {formatDate(application.reviewed_at)}
-                          </span>
+                    {application.status === 'approved' && (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-3">
                           <span className="text-sm text-gray-500">
                             <Download className="w-4 h-4 inline mr-1" />
-                            下载次数: {downloadCount}
+                            下载次数: {downloads.length}
                           </span>
+                          <button
+                            onClick={() => handleDownload(application.id)}
+                            className="flex items-center gap-1 px-4 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            下载数据
+                          </button>
                         </div>
-                        <button className="flex items-center gap-1 px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors">
-                          下载数据
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+
+                        {downloads.length > 0 && (
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-xs text-gray-500 mb-2">下载记录:</div>
+                            <div className="space-y-1 max-h-24 overflow-y-auto">
+                              {downloads.map((d, i) => (
+                                <div key={d.id} className="text-xs text-gray-600 flex items-center gap-2">
+                                  <Check className="w-3 h-3 text-green-500" />
+                                  {formatDate(d.downloaded_at)}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 bg-blue-50 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-blue-800 font-medium">
+                              <Quote className="w-4 h-4" />
+                              引用信息
+                            </div>
+                            <button
+                              onClick={() => handleCopy(generateCitation(application))}
+                              className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                            >
+                              {copiedId === application.id ? (
+                                <>
+                                  <Check className="w-3 h-3" />
+                                  已复制
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  复制引用
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <div className="text-xs text-blue-700 bg-white/50 rounded p-2 font-mono leading-relaxed">
+                            {generateCitation(application)}
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -131,7 +193,55 @@ export function Records() {
                         <p className="text-sm text-red-600">{application.review_comment}</p>
                       </div>
                     )}
+
+                    {application.status === 'pending' && (
+                      <div className="p-3 bg-orange-50 rounded-lg">
+                        <div className="text-sm text-orange-600">
+                          您的申请正在审核中，请耐心等待。我们会在1-3个工作日内完成审核并通过邮件通知您结果。
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 p-4 bg-gray-50">
+                      <div className="mb-4">
+                        <div className="text-sm font-medium text-gray-700 mb-2">申请ID</div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs text-gray-600 bg-white px-2 py-1 rounded">{application.id}</code>
+                          <button
+                            onClick={() => handleCopy(application.id)}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <div className="text-sm font-medium text-gray-700 mb-2">申请时间</div>
+                        <div className="text-sm text-gray-600">{formatDate(application.submitted_at)}</div>
+                      </div>
+
+                      {application.reviewed_at && (
+                        <div className="mb-4">
+                          <div className="text-sm font-medium text-gray-700 mb-2">审核时间</div>
+                          <div className="text-sm text-gray-600">{formatDate(application.reviewed_at)}</div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-2">完整样本列表</div>
+                        <div className="space-y-2">
+                          {sampleNames.map((name, index) => (
+                            <div key={index} className="text-sm text-gray-600 bg-white px-3 py-2 rounded">
+                              {name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

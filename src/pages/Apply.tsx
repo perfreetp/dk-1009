@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, CheckCircle, AlertCircle, Info, Trash2, Send } from 'lucide-react';
+import { FileText, CheckCircle, AlertCircle, Info, Trash2, Send, Plus, Search, ShoppingCart } from 'lucide-react';
 
 export function Apply() {
-  const { selectedSamples, samples, removeSelectedSample, submitApplication } = useStore();
+  const { selectedSamples, samples, removeSelectedSample, submitApplication, searchResults } = useStore();
   const navigate = useNavigate();
-  
+
   const [purpose, setPurpose] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showAllSamples, setShowAllSamples] = useState(false);
 
   const selectedSamplesData = selectedSamples.map((id) => samples.find((s) => s.id === id)).filter(Boolean);
 
   const handleSubmit = () => {
     if (!purpose.trim()) return;
     if (!agreed) return;
-    
+
     submitApplication(purpose);
     setSubmitted(true);
   };
@@ -55,9 +56,36 @@ export function Apply() {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-3">
-            <FileText className="w-6 h-6 text-blue-500" />
-            <h1 className="text-xl font-semibold text-gray-900">申请下载</h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="w-6 h-6 text-blue-500" />
+              <h1 className="text-xl font-semibold text-gray-900">申请下载</h1>
+              {selectedSamples.length > 0 && (
+                <span className="px-2 py-0.5 bg-green-100 text-green-600 text-sm rounded-full">
+                  {selectedSamples.length} 个样本
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/search"
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                继续添加
+              </Link>
+              {selectedSamples.length > 0 && (
+                <button
+                  onClick={() => {
+                    selectedSamples.forEach((id) => removeSelectedSample(id));
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  清空
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -66,10 +94,13 @@ export function Apply() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="font-semibold text-gray-900 mb-4">选择的数据样本</h2>
-              
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5" />
+                实验数据篮
+              </h2>
+
               {selectedSamplesData.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {selectedSamplesData.map((sample) => (
                     <div key={sample.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
                       <img
@@ -79,11 +110,14 @@ export function Apply() {
                       />
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-gray-900 truncate">{sample.name}</h3>
-                        <p className="text-sm text-gray-500">{sample.scene_type} - {sample.sensor_type}</p>
+                        <p className="text-sm text-gray-500">
+                          {sample.scene_type} - {sample.sensor_type} - {sample.terrain}
+                        </p>
                       </div>
                       <button
                         onClick={() => removeSelectedSample(sample.id)}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="移除"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -91,11 +125,15 @@ export function Apply() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>暂无选择的数据样本</p>
-                  <Link to="/search" className="text-blue-600 hover:text-blue-700 mt-2 inline-block">
-                    去检索并选择样本
+                <div className="text-center py-8">
+                  <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="text-gray-500 mb-4">实验数据篮为空</p>
+                  <Link
+                    to="/search"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    <Search className="w-4 h-4" />
+                    去检索添加
                   </Link>
                 </div>
               )}
