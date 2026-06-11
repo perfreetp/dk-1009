@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Sample, Favorite, Application, FilterState, SearchResult, Download } from '../types';
+import { Sample, Favorite, Application, FilterState, SearchResult, Download, ReproduceExperiment } from '../types';
 import { mockSamples, mockFavorites, mockApplications, mockDownloads } from '../data/mockData';
 
 const STORAGE_KEYS = {
@@ -10,6 +10,8 @@ const STORAGE_KEYS = {
   savedFilters: 'lowalt_saved_filters',
   defaultFilterId: 'lowalt_default_filter_id',
   highlightedAppId: 'lowalt_highlighted_app_id',
+  experiments: 'lowalt_experiments',
+  downloadPackages: 'lowalt_download_packages',
 };
 
 interface SavedFilter {
@@ -54,6 +56,7 @@ interface AppState {
   applications: Application[];
   downloads: Download[];
   downloadPackages: Record<string, DownloadPackage>;
+  experiments: ReproduceExperiment[];
   filter: FilterState;
   keyword: string;
   searchResults: SearchResult;
@@ -77,6 +80,8 @@ interface AppState {
   recordDownload: (applicationId: string) => void;
   getDownloadsForApplication: (applicationId: string) => Download[];
   getDownloadPackage: (applicationId: string) => DownloadPackage;
+  regenerateDownloadPackage: (applicationId: string) => DownloadPackage;
+  checkPackageExpired: (applicationId: string) => boolean;
   saveFilterAs: (name: string) => void;
   loadFilter: (savedFilter: SavedFilter, autoSearch?: boolean) => void;
   deleteSavedFilter: (id: string) => void;
@@ -86,6 +91,12 @@ interface AppState {
   addSamplesToSelection: (sampleIds: string[]) => void;
   removeSamplesFromSelection: (sampleIds: string[]) => void;
   selectAllVisibleSamples: () => void;
+  selectBySceneType: (sceneType: string) => void;
+  selectBySensorType: (sensorType: string) => void;
+  createExperiment: (data: Omit<ReproduceExperiment, 'id' | 'created_at'>) => string;
+  updateExperiment: (id: string, updates: Partial<ReproduceExperiment>) => void;
+  deleteExperiment: (id: string) => void;
+  getExperimentsForApplication: (applicationId: string) => ReproduceExperiment[];
 }
 
 const generateChecksum = () => {
@@ -116,7 +127,8 @@ export const useStore = create<AppState>((set, get) => ({
   favorites: loadFromStorage(STORAGE_KEYS.favorites, mockFavorites),
   applications: loadFromStorage(STORAGE_KEYS.applications, mockApplications),
   downloads: loadFromStorage(STORAGE_KEYS.downloads, mockDownloads),
-  downloadPackages: {},
+  downloadPackages: loadFromStorage(STORAGE_KEYS.downloadPackages, {}),
+  experiments: loadFromStorage(STORAGE_KEYS.experiments, []),
   filter: {
     flightHeight: { min: 0, max: 200 },
     sensorTypes: [],
@@ -280,6 +292,63 @@ export const useStore = create<AppState>((set, get) => ({
     set({ selectedSamples: newSelected });
   },
 
+  selectBySceneType: (sceneType) => {
+    const { samples, selectedSamples } = get();
+    const matchingIds = samples
+      .filter((s) => s.scene_type === sceneType && !selectedSamples.includes(s.id))
+      .map((s) => s.id);
+    const newSelected = [...new Set([...selectedSamples, ...matchingIds])];
+    saveToStorage(STORAGE_KEYS.selectedSamples, newSelected);
+    set({ selectedSamples: newSelected });
+  },
+
+  selectBySensorType: (sensorType) => {
+    const { samples, selectedSamples } = get();
+    const matchingIds = samples
+      .filter((s) => s.sensor_type === sensorType && !selectedSamples.includes(s.id))
+      .map((s) => s.id);
+    const newSelected = [...new Set([...selectedSamples, ...matchingIds])];
+    saveToStorage(STORAGE_KEYS.selectedSamples, newSelected);
+    set({ selectedSamples: newSelected });
+  },
+
+  createExperiment: (data) => {
+    const newExperiment: ReproduceExperiment = {
+      ...data,
+      id: `exp${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    
+    const state = get();
+    const newExperiments = [newExperiment, ...state.experiments];
+    saveToStorage(STORAGE_KEYS.experiments, newExperiments);
+    set({ experiments: newExperiments });
+    
+    return newExperiment.id;
+  },
+
+  updateExperiment: (id, updates) => {
+    set((state) => {
+      const newExperiments = state.experiments.map((e) =>
+        e.id === id ? { ...e, ...updates, updated_at: new Date().toISOString() } : e
+      );
+      saveToStorage(STORAGE_KEYS.experiments, newExperiments);
+      return { experiments: newExperiments };
+    });
+  },
+
+  deleteExperiment: (id) => {
+    set((state) => {
+      const newExperiments = state.experiments.filter((e) => e.id !== id);
+      saveToStorage(STORAGE_KEYS.experiments, newExperiments);
+      return { experiments: newExperiments };
+    });
+  },
+
+  getExperimentsForApplication: (applicationId) => {
+    return get().experiments.filter((e) => e.application_id === applicationId);
+  },
+
   submitApplication: (purpose) => {
     const { selectedSamples } = get();
     if (selectedSamples.length === 0) return '';
@@ -343,11 +412,36 @@ export const useStore = create<AppState>((set, get) => ({
     
     const packageData = generateDownloadPackage(applicationId, app.sample_ids);
     
-    set((s) => ({
-      downloadPackages: { ...s.downloadPackages, [applicationId]: packageData },
-    }));
+    const newPackages = { ...state.downloadPackages, [applicationId]: packageData };
+    saveToStorage(STORAGE_KEYS.downloadPackages, newPackages);
+    set({ downloadPackages: newPackages });
     
     return packageData;
+  },
+
+  regenerateDownloadPackage: (applicationId) => {
+    const state = get();
+    const app = state.applications.find((a) => a.id === applicationId);
+    if (!app) {
+      return { applicationId, files: [], expiresAt: '' };
+    }
+    
+    const packageData = generateDownloadPackage(applicationId, app.sample_ids);
+    
+    const newPackages = { ...state.downloadPackages, [applicationId]: packageData };
+    saveToStorage(STORAGE_KEYS.downloadPackages, newPackages);
+    set({ downloadPackages: newPackages });
+    
+    return packageData;
+  },
+
+  checkPackageExpired: (applicationId) => {
+    const state = get();
+    const packageData = state.downloadPackages[applicationId];
+    if (!packageData || !packageData.expiresAt) {
+      return true;
+    }
+    return new Date(packageData.expiresAt) < new Date();
   },
 
   saveFilterAs: (name) => {

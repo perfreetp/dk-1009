@@ -2,11 +2,18 @@ import { useStore } from '../store';
 import { FilterPanel } from '../components/Search/FilterPanel';
 import { ResultCard } from '../components/Search/ResultCard';
 import { Search, Filter, SlidersHorizontal } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function AdvancedSearch() {
-  const { searchResults } = useStore();
+  const { searchResults, getDefaultFilter, loadFilter, searchSamples } = useStore();
   const [showFilters, setShowFilters] = useState(true);
+
+  useEffect(() => {
+    const defaultFilter = getDefaultFilter();
+    if (defaultFilter) {
+      loadFilter(defaultFilter, true);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">

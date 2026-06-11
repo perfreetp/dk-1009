@@ -78,3 +78,21 @@ export interface SearchResult {
   page: number;
   pageSize: number;
 }
+
+export interface ReproduceExperiment {
+  id: string;
+  application_id: string;
+  name: string;
+  sample_ids: string[];
+  algorithm_version: string;
+  training_config: string;
+  metrics: {
+    name: string;
+    value: string;
+    unit?: string;
+  }[];
+  status: 'running' | 'completed' | 'failed';
+  created_at: string;
+  updated_at?: string;
+  notes?: string;
+}

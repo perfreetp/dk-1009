@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store';
-import { sensorTypes, terrains, weathers, targetClasses } from '../../data/mockData';
-import { ChevronDown, ChevronUp, RotateCcw, Search, Bookmark, Save, Trash2, X, Edit3, Star, Check, CheckSquare, Square } from 'lucide-react';
+import { sensorTypes, terrains, weathers, targetClasses, sceneTypes } from '../../data/mockData';
+import { ChevronDown, ChevronUp, RotateCcw, Search, Bookmark, Save, Trash2, X, Edit3, Star, Check, CheckSquare, Square, Plus, Layers, Camera } from 'lucide-react';
 
 interface FilterSectionProps {
   title: string;
@@ -45,6 +45,9 @@ export function FilterPanel() {
     selectedSamples,
     addSamplesToSelection,
     removeSamplesFromSelection,
+    selectBySceneType,
+    selectBySensorType,
+    samples,
   } = useStore();
   
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -298,6 +301,65 @@ export function FilterPanel() {
           )}
           全选当前结果 ({searchResults.samples.length}个)
         </button>
+      </div>
+
+      <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+        <div className="text-xs text-blue-600 font-medium mb-2 flex items-center gap-1">
+          <Plus className="w-3 h-3" />
+          快速加入数据篮
+        </div>
+        <div className="space-y-2">
+          <div>
+            <div className="text-xs text-blue-500 mb-1 flex items-center gap-1">
+              <Layers className="w-3 h-3" />
+              按场景类型
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {sceneTypes.map((type) => {
+                const count = samples.filter((s) => s.scene_type === type && !selectedSamples.includes(s.id)).length;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => selectBySceneType(type)}
+                    disabled={count === 0}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      count > 0
+                        ? 'bg-white text-blue-600 hover:bg-blue-100'
+                        : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                    }`}
+                  >
+                    {type} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-blue-500 mb-1 flex items-center gap-1">
+              <Camera className="w-3 h-3" />
+              按传感器类型
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {sensorTypes.map((type) => {
+                const count = samples.filter((s) => s.sensor_type === type && !selectedSamples.includes(s.id)).length;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => selectBySensorType(type)}
+                    disabled={count === 0}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      count > 0
+                        ? 'bg-white text-blue-600 hover:bg-blue-100'
+                        : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                    }`}
+                  >
+                    {type} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       <FilterSection title="关键词搜索">
