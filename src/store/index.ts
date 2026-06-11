@@ -29,8 +29,10 @@ interface DownloadPackage {
     name: string;
     size: string;
     checksum: string;
+    downloadUrl: string;
   }[];
   expiresAt: string;
+  generatedAt: string;
 }
 
 function loadFromStorage<T>(key: string, defaultValue: T): T {
@@ -110,6 +112,7 @@ const generateDownloadPackage = (applicationId: string, sampleIds: string[]): Do
     name: `sample_${id}.zip`,
     size: `${(100 + Math.random() * 500).toFixed(1)} MB`,
     checksum: generateChecksum(),
+    downloadUrl: `https://download.lowaltitude.edu/packages/${applicationId}/sample_${id}.zip?token=${generateChecksum().slice(0, 16)}`,
   }));
   
   const expiresAt = new Date();
@@ -119,6 +122,7 @@ const generateDownloadPackage = (applicationId: string, sampleIds: string[]): Do
     applicationId,
     files,
     expiresAt: expiresAt.toISOString(),
+    generatedAt: new Date().toISOString(),
   };
 };
 
@@ -329,9 +333,28 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateExperiment: (id, updates) => {
     set((state) => {
-      const newExperiments = state.experiments.map((e) =>
-        e.id === id ? { ...e, ...updates, updated_at: new Date().toISOString() } : e
-      );
+      const newExperiments = state.experiments.map((e) => {
+        if (e.id !== id) return e;
+        
+        const now = new Date().toISOString();
+        const hasStatusChange = updates.status !== undefined && updates.status !== e.status;
+        
+        const historyEntry = hasStatusChange ? {
+          status: updates.status,
+          changed_at: now,
+        } : undefined;
+        
+        const newHistory = hasStatusChange 
+          ? [...(e.status_history || []), historyEntry] 
+          : e.status_history;
+        
+        return { 
+          ...e, 
+          ...updates, 
+          updated_at: now,
+          ...(hasStatusChange && { status_history: newHistory })
+        };
+      });
       saveToStorage(STORAGE_KEYS.experiments, newExperiments);
       return { experiments: newExperiments };
     });
@@ -407,7 +430,7 @@ export const useStore = create<AppState>((set, get) => ({
     
     const app = state.applications.find((a) => a.id === applicationId);
     if (!app) {
-      return { applicationId, files: [], expiresAt: '' };
+      return { applicationId, files: [], expiresAt: '', generatedAt: '' };
     }
     
     const packageData = generateDownloadPackage(applicationId, app.sample_ids);
@@ -423,7 +446,7 @@ export const useStore = create<AppState>((set, get) => ({
     const state = get();
     const app = state.applications.find((a) => a.id === applicationId);
     if (!app) {
-      return { applicationId, files: [], expiresAt: '' };
+      return { applicationId, files: [], expiresAt: '', generatedAt: '' };
     }
     
     const packageData = generateDownloadPackage(applicationId, app.sample_ids);

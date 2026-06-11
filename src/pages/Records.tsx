@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight, Quote, Check, Package, Hash, CalendarDays, ExternalLink, FileDown, RefreshCw, FlaskConical, Plus, Trash2, Edit3, Play, CheckCircle2, XCircle2 } from 'lucide-react';
+import { ClipboardList, Download, Calendar, CheckCircle, Clock, XCircle, FileText, Copy, ChevronRight, Quote, Check, Package, Hash, CalendarDays, ExternalLink, FileDown, RefreshCw, FlaskConical, Plus, Trash2, Edit3, Play, CheckCircle2, X } from 'lucide-react';
 
 type CitationFormat = 'gbt' | 'apa' | 'bibtex';
 type ExportOption = 'citation' | 'samples' | 'full';
@@ -11,6 +11,7 @@ interface ExperimentFormData {
   training_config: string;
   metrics: { name: string; value: string; unit?: string }[];
   notes: string;
+  selectedSamples: string[];
 }
 
 export function Records() {
@@ -27,8 +28,10 @@ export function Records() {
     training_config: '',
     metrics: [{ name: '', value: '', unit: '' }],
     notes: '',
+    selectedSamples: [],
   });
   const [editingExperiment, setEditingExperiment] = useState<string | null>(null);
+  const [showCompareModal, setShowCompareModal] = useState<string | null>(null);
 
   useEffect(() => {
     if (highlightedAppId) {
@@ -151,6 +154,8 @@ ${downloadPackage.files.map((file) => `${file.name}\t${file.checksum}`).join('\n
   };
 
   const handleOpenExperimentModal = (appId: string) => {
+    const app = applications.find((a) => a.id === appId);
+    const defaultSamples = app?.sample_ids || [];
     setEditingExperiment(null);
     setExperimentForm({
       name: '',
@@ -158,6 +163,7 @@ ${downloadPackage.files.map((file) => `${file.name}\t${file.checksum}`).join('\n
       training_config: '',
       metrics: [{ name: '', value: '', unit: '' }],
       notes: '',
+      selectedSamples: [...defaultSamples],
     });
     setShowExperimentModal(appId);
   };
@@ -169,11 +175,15 @@ ${downloadPackage.files.map((file) => `${file.name}\t${file.checksum}`).join('\n
 
   const handleSaveExperiment = () => {
     if (!showExperimentModal) return;
+    if (experimentForm.selectedSamples.length === 0) {
+      alert('请至少选择一个样本');
+      return;
+    }
 
     const data = {
       application_id: showExperimentModal,
       name: experimentForm.name,
-      sample_ids: applications.find((a) => a.id === showExperimentModal)?.sample_ids || [],
+      sample_ids: experimentForm.selectedSamples,
       algorithm_version: experimentForm.algorithm_version,
       training_config: experimentForm.training_config,
       metrics: experimentForm.metrics.filter((m) => m.name && m.value),
@@ -200,10 +210,31 @@ ${downloadPackage.files.map((file) => `${file.name}\t${file.checksum}`).join('\n
         training_config: experiment.training_config,
         metrics: experiment.metrics.length > 0 ? experiment.metrics : [{ name: '', value: '', unit: '' }],
         notes: experiment.notes || '',
+        selectedSamples: [...experiment.sample_ids],
       });
       setEditingExperiment(experimentId);
       setShowExperimentModal(appId);
     }
+  };
+
+  const handleUpdateExperimentStatus = (experimentId: string, newStatus: 'running' | 'completed' | 'failed') => {
+    updateExperiment(experimentId, { status: newStatus });
+  };
+
+  const getTimeRemaining = (expiresAt: string) => {
+    const now = new Date();
+    const expire = new Date(expiresAt);
+    const diff = expire.getTime() - now.getTime();
+    
+    if (diff <= 0) return '已过期';
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) return `${days}天${hours}小时`;
+    if (hours > 0) return `${hours}小时${minutes}分钟`;
+    return `${minutes}分钟`;
   };
 
   const handleDeleteExperiment = (experimentId: string) => {
@@ -273,53 +304,6 @@ ${downloadPackage.files.map((file) => `${file.name}\t${file.checksum}`).join('\n
 
   const getDownloadHistory = (applicationId: string) => {
     return getDownloadsForApplication(applicationId);
-  };
-
-  const handleExport = (app: typeof applications[0]) => {
-    const sampleNames = getSampleNames(app.sample_ids);
-    const downloadPackage = getDownloadPackage(app.id);
-    
-    const content = `低空数据集申请导出
-====================
-
-申请信息
---------
-申请ID: ${app.id}
-申请时间: ${formatDate(app.submitted_at)}
-审核状态: ${getStatusInfo(app.status).label}
-使用说明: ${app.purpose}
-
-样本清单
---------
-${sampleNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}
-
-下载包信息
-----------
-文件数量: ${downloadPackage.files.length}
-有效期至: ${downloadPackage.expiresAt ? formatDate(downloadPackage.expiresAt) : '未生成'}
-
-文件详情
---------
-${downloadPackage.files.map((file, i) => 
-  `${i + 1}. ${file.name}
-   大小: ${file.size}
-   校验码(MD5): ${file.checksum}`
-).join('\n\n')}
-
-引用格式 (GB/T)
----------------
-${generateCitation(app)}
-`;
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `application_${app.id}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const getFileTotalSize = (files: { size: string }[]) => {
@@ -477,7 +461,9 @@ ${generateCitation(app)}
                               <div className="text-gray-500">有效期至</div>
                               <div className={`font-medium ${checkPackageExpired(application.id) ? 'text-red-600' : 'text-gray-900'}`}>
                                 {downloadPackage.expiresAt ? formatDate(downloadPackage.expiresAt) : '--'}
-                                {checkPackageExpired(application.id) && ' (已过期)'}
+                              </div>
+                              <div className={`text-xs mt-1 ${checkPackageExpired(application.id) ? 'text-red-500' : 'text-green-600'}`}>
+                                {checkPackageExpired(application.id) ? '已过期' : `剩余 ${getTimeRemaining(downloadPackage.expiresAt)}`}
                               </div>
                             </div>
                             <div className="bg-white rounded p-3">
@@ -487,17 +473,30 @@ ${generateCitation(app)}
                           </div>
                           
                           {downloadPackage.files.length > 0 && (
-                            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+                            <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
                               {downloadPackage.files.map((file, i) => (
-                                <div key={i} className="flex items-center justify-between bg-white rounded px-3 py-2 text-sm">
-                                  <div>
-                                    <div className="font-medium text-gray-900">{file.name}</div>
-                                    <div className="text-gray-500 flex items-center gap-4">
+                                <div key={i} className="bg-white rounded p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="font-medium text-gray-900 text-sm">{file.name}</div>
+                                    <button
+                                      onClick={() => handleCopy(file.downloadUrl)}
+                                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                    >
+                                      <Copy className="w-3 h-3" />
+                                      复制链接
+                                    </button>
+                                  </div>
+                                  <div className="text-xs text-gray-500 space-y-1">
+                                    <div className="flex items-center gap-4">
                                       <span>{file.size}</span>
                                       <span className="flex items-center gap-1">
                                         <Hash className="w-3 h-3" />
                                         {file.checksum}
                                       </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-blue-500">
+                                      <ExternalLink className="w-3 h-3" />
+                                      <span className="truncate">{file.downloadUrl}</span>
                                     </div>
                                   </div>
                                 </div>
@@ -587,14 +586,33 @@ ${generateCitation(app)}
                           if (experiments.length === 0) return null;
                           return (
                             <div className="bg-teal-50 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-3">
-                                <FlaskConical className="w-5 h-5 text-teal-600" />
-                                <h3 className="font-semibold text-teal-800">复现实验 ({experiments.length})</h3>
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <FlaskConical className="w-5 h-5 text-teal-600" />
+                                  <h3 className="font-semibold text-teal-800">复现实验 ({experiments.length})</h3>
+                                </div>
+                                {experiments.length >= 2 && (
+                                  <button
+                                    onClick={() => setShowCompareModal(application.id)}
+                                    className="flex items-center gap-1 text-xs text-teal-700 hover:text-teal-800 bg-white px-2 py-1 rounded"
+                                  >
+                                    <div className="w-4 h-4 flex items-center justify-center">
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="3" width="7" height="7" />
+                                        <rect x="14" y="3" width="7" height="7" />
+                                        <rect x="3" y="14" width="7" height="7" />
+                                        <rect x="14" y="14" width="7" height="7" />
+                                      </svg>
+                                    </div>
+                                    对比分析
+                                  </button>
+                                )}
                               </div>
                               <div className="space-y-3">
                                 {experiments.map((exp) => {
                                   const expStatus = getExperimentStatusInfo(exp.status);
                                   const ExpIcon = expStatus.icon;
+                                  const expSampleNames = getSampleNames(exp.sample_ids);
                                   return (
                                     <div key={exp.id} className="bg-white rounded-lg p-3">
                                       <div className="flex items-center justify-between mb-2">
@@ -604,8 +622,18 @@ ${generateCitation(app)}
                                             {expStatus.label}
                                           </span>
                                           <span className="font-medium text-gray-900">{exp.name}</span>
+                                          <span className="text-xs text-gray-400">({exp.sample_ids.length}个样本)</span>
                                         </div>
                                         <div className="flex items-center gap-1">
+                                          <select
+                                            value={exp.status}
+                                            onChange={(e) => handleUpdateExperimentStatus(exp.id, e.target.value as 'running' | 'completed' | 'failed')}
+                                            className="text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                          >
+                                            <option value="running">运行中</option>
+                                            <option value="completed">已完成</option>
+                                            <option value="failed">失败</option>
+                                          </select>
                                           <button
                                             onClick={() => handleEditExperiment(exp.id, application.id)}
                                             className="p-1 text-gray-400 hover:text-blue-600"
@@ -624,12 +652,23 @@ ${generateCitation(app)}
                                       </div>
                                       <div className="text-xs text-gray-500 space-y-1">
                                         <div>算法版本: {exp.algorithm_version}</div>
+                                        <div>样本: {expSampleNames.slice(0, 3).join(', ')}{expSampleNames.length > 3 ? ` +${expSampleNames.length - 3}` : ''}</div>
                                         {exp.metrics.length > 0 && (
                                           <div>
                                             指标: {exp.metrics.map((m) => `${m.name}=${m.value}${m.unit ? m.unit : ''}`).join(', ')}
                                           </div>
                                         )}
                                         <div>创建时间: {formatDate(exp.created_at)}</div>
+                                        {exp.status_history && exp.status_history.length > 0 && (
+                                          <div className="mt-2 pt-2 border-t border-gray-100">
+                                            <div className="text-gray-400 mb-1">状态变更记录:</div>
+                                            {exp.status_history.map((h, i) => (
+                                              <div key={i} className="text-gray-500">
+                                                {formatDate(h.changed_at)}: {h.status === 'running' ? '运行中' : h.status === 'completed' ? '已完成' : '失败'}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -790,6 +829,106 @@ ${generateCitation(app)}
         </div>
       )}
 
+      {showCompareModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">复现实验对比分析</h3>
+              <button
+                onClick={() => setShowCompareModal(null)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              {showCompareModal && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">对比项</th>
+                        {getExperimentsForApplication(showCompareModal).map((exp) => (
+                          <th key={exp.id} className="px-4 py-3 text-center font-medium text-gray-600">
+                            <div className="flex flex-col items-center">
+                              <span>{exp.name}</span>
+                              <span className={`mt-1 px-2 py-0.5 rounded text-xs ${getExperimentStatusInfo(exp.status).color}`}>
+                                {getExperimentStatusInfo(exp.status).label}
+                              </span>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-700">算法版本</td>
+                        {getExperimentsForApplication(showCompareModal).map((exp) => (
+                          <td key={exp.id} className="px-4 py-3 text-center text-gray-900">
+                            {exp.algorithm_version || '-'}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-700">样本数量</td>
+                        {getExperimentsForApplication(showCompareModal).map((exp) => (
+                          <td key={exp.id} className="px-4 py-3 text-center text-gray-900">
+                            {exp.sample_ids.length}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-700">训练配置</td>
+                        {getExperimentsForApplication(showCompareModal).map((exp) => (
+                          <td key={exp.id} className="px-4 py-3 text-center text-gray-900">
+                            <div className="max-w-[200px] truncate" title={exp.training_config}>
+                              {exp.training_config || '-'}
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                      {(() => {
+                        const allMetrics = new Set<string>();
+                        getExperimentsForApplication(showCompareModal).forEach((exp) => {
+                          exp.metrics.forEach((m) => allMetrics.add(m.name));
+                        });
+                        return Array.from(allMetrics).map((metricName) => (
+                          <tr key={metricName} className="border-t border-gray-100">
+                            <td className="px-4 py-3 font-medium text-gray-700">{metricName}</td>
+                            {getExperimentsForApplication(showCompareModal).map((exp) => {
+                              const metric = exp.metrics.find((m) => m.name === metricName);
+                              return (
+                                <td key={exp.id} className="px-4 py-3 text-center">
+                                  {metric ? (
+                                    <span className={`font-medium ${!Number.isNaN(parseFloat(metric.value)) ? 'text-green-600' : 'text-gray-900'}`}>
+                                      {metric.value}{metric.unit || ''}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ));
+                      })()}
+                      <tr className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium text-gray-700">创建时间</td>
+                        {getExperimentsForApplication(showCompareModal).map((exp) => (
+                          <td key={exp.id} className="px-4 py-3 text-center text-gray-900">
+                            {formatDate(exp.created_at)}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showExperimentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -816,6 +955,51 @@ ${generateCitation(app)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="如: YOLOv8-v1.0"
                 />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">选择样本</label>
+                  <button
+                    onClick={() => {
+                      const app = applications.find((a) => a.id === showExperimentModal);
+                      if (app) {
+                        setExperimentForm((prev) => ({ ...prev, selectedSamples: [...app.sample_ids] }));
+                      }
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    全选
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-2">
+                  {showExperimentModal && applications.find((a) => a.id === showExperimentModal)?.sample_ids.map((sampleId) => {
+                    const sample = samples.find((s) => s.id === sampleId);
+                    const isSelected = experimentForm.selectedSamples.includes(sampleId);
+                    return (
+                      <label key={sampleId} className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setExperimentForm((prev) => ({
+                              ...prev,
+                              selectedSamples: e.target.checked
+                                ? [...prev.selectedSamples, sampleId]
+                                : prev.selectedSamples.filter((id) => id !== sampleId)
+                            }));
+                          }}
+                          className="w-4 h-4 text-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{sample?.name || sampleId}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  已选择 {experimentForm.selectedSamples.length} 个样本
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">训练配置</label>

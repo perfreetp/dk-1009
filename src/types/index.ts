@@ -94,5 +94,22 @@ export interface ReproduceExperiment {
   status: 'running' | 'completed' | 'failed';
   created_at: string;
   updated_at?: string;
+  status_history?: {
+    status: 'running' | 'completed' | 'failed';
+    changed_at: string;
+    reason?: string;
+  }[];
   notes?: string;
+}
+
+export interface DownloadPackage {
+  applicationId: string;
+  files: {
+    name: string;
+    size: string;
+    checksum: string;
+    downloadUrl: string;
+  }[];
+  expiresAt: string;
+  generatedAt: string;
 }
